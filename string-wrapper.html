@@ -1,0 +1,175 @@
+<!doctype html><html lang=en>
+    <title>String wrapper</title>
+<style>
+html, body {
+    height: 100%;
+}
+#raw, #wrapped {
+    width: 90%;
+    height: 50%;
+    display: block;
+}
+</style>
+<script>
+
+function unwrap(string, concat_op)
+{
+    let string_delim = null;
+    let output = '';
+    for (let i = 0; i < string.length; ++i) {
+        if ( (i === 0 || string[i - 1] !== '\\') &&
+            (string_delim === null || string_delim === string[i]) &&
+            (string[i] === '"' || string[i] === "'"))
+        {
+            string_delim = string_delim === null ? string[i] : null;
+        }
+        else if (string_delim === null) {
+            if (string[i] !== ' ' && (concat_op.length !== 1 || string[i] !== concat_op) && string[i] !== '\n') {
+                return null;
+            }
+            continue;
+        }
+        else if (i < string.length - 1 && string[i] === '\\' && string[i + 1] === 'n') {
+            output += '\n';
+            i += 1;
+        }
+        else if (i < string.length - 1 && string[i] === '\\' && string[i + 1] === string_delim) {
+            output += string_delim;
+            i += 1;
+        }
+        else {
+            output += string[i];
+        }
+    }
+    return output;
+}
+
+function wrap(string, quote, line_length, concat_op, indent, expand_tab, tab_width, preserve_words)
+{
+    indent = parseInt(indent);
+    line_length = parseInt(line_length);
+    let output = (expand_tab ? ' ' : '\t').repeat(indent) + quote;
+    let column = output.length;
+    const line_end = concat_op.length > 0 ? ' ' + concat_op : '';
+    string = string.replaceAll('\n', '\\n').replaceAll(quote, '\\' + quote)
+    const WORD_BREAK_CHARS = ' \r\t\n,.!;>';
+    for (let i = 0; i < string.length; ++i) {
+        let word_end;
+        if (preserve_words) {
+            for (
+                word_end = i + 1;
+                word_end < string.length - 1 && word_end < i + line_length - column + 10;
+                ++word_end
+            ) {
+                if (string[word_end - 1] === '\\' || string[word_end] === '\\') {
+                    break;
+                }
+                if (WORD_BREAK_CHARS.indexOf(string[word_end]) !== -1) {
+                    do {
+                        word_end += 1;
+                    } while (word_end < string.length && WORD_BREAK_CHARS.indexOf(string[word_end]) !== -1);
+                    break;
+                }
+            }
+            if (line_end.length + word_end - i + 2 > line_length) {
+                word_end = line_length - 2 + i - line_end.length;
+                if (word_end <= i) {  // If the line length is too short to hold even 1 character
+                    word_end = i + 1;
+                }
+            }
+            if (string[word_end - 1] === '\\') {  // Prevent \ before quote at line end
+                word_end += 1;
+            }
+        }
+        else if (string[i] === '\\') {
+            word_end = i + 2;
+        }
+        else {
+            word_end = i + 1;
+        }
+        char = string.substr(i, word_end - i);
+        i += word_end - i - 1;
+        if (
+            string.length - i + column + char.length > line_length &&  // The last line has more capacity (no concat_op)
+            i > 0 &&  // Prevent empty first line when line length is too short
+            column + line_end.length + 1 + char.length > line_length  // Line break is needed
+        ) {
+            output += quote + line_end + '\n';
+            output += (expand_tab ? ' ' : '\t').repeat(indent) + quote;
+            column = indent + 1;
+        }
+        output += char;
+        column += char.length;
+        if (i > 0 && string.length >= i + 2 && string[i - 1] === '\\' && string[i] === 'n' && string[i + 1] !== '\\') {
+            output += quote + line_end + '\n\n' + (expand_tab ? ' ' : '\t').repeat(indent) + quote;
+            column = indent + quote.length;
+        }
+    }
+    output += quote;
+    return output;
+}
+
+function onload()
+{
+    let raw = document.querySelector('#raw');
+    let wrapped = document.querySelector('#wrapped');
+
+    function input_raw()
+    {
+        wrapped.value = wrap(
+            raw.value,
+            document.querySelector('input[name=quote]:checked').value,
+            document.querySelector('#line_length').value,
+            document.querySelector('#concat_op').value,
+            document.querySelector('#indent').value,
+            !!parseInt(document.querySelector('input[name=expand_tab]:checked').value),
+            document.querySelector('#tab_width').value,
+            !!document.querySelector('#preserve_words').checked,
+       );
+       wrapped.style.tabSize = parseInt(document.querySelector('#tab_width').value);
+    }
+
+    function input_wrapped(event)
+    {
+        let unwrapped = unwrap(
+            wrapped.value,
+            document.querySelector('#concat_op').value,
+        );
+        if (unwrapped !== null) {
+            raw.value = unwrapped;
+        }
+    }
+
+    raw.addEventListener('input', input_raw);
+    document.querySelectorAll('input').forEach(element => element.addEventListener('change', input_raw));
+    wrapped.addEventListener('input', input_wrapped);
+    wrapped.addEventListener('blur', input_raw);
+    input_raw();
+}
+document.addEventListener('DOMContentLoaded', onload);
+</script>
+Quotes:
+<input type=radio name=quote id=quote_single value="'" checked><label for=quote_single>Single</label>
+<input type=radio name=quote id=quote_double value='"'><label for=quote_double>Double</label>
+<br>
+Indentation:
+<input type=number id=indent min=0 value=4>
+<input type=radio name=expand_tab value=1 id=tabs checked><label for=tabs>spaces</label>
+<input type=radio name=expand_tab value=0 id=spaces><label for=spaces>tabs</label>
+<label for=tabs>with tab width:</label>
+<input type=number id=tab_width min=1 value=4>
+<br>
+<label for=tabs>Line length:</label>
+<input type=number id=line_length min=3 value=99>
+<br>
+<label for=concat_op>String concatentation operator:</label>
+<input type=text id=concat_op maxlength=1 value="">
+<br>
+<input type=checkbox id=preserve_words checked><label for=preserve_words>Preserve words at lines ends</label>
+<br>
+
+<label for=raw>Raw:</label>
+<textarea id=raw></textarea>
+<label for=wrapped>Wrapped:</label>
+<textarea id=wrapped></textarea>
+</html>
